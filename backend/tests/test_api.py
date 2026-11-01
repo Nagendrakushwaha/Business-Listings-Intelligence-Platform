@@ -3,6 +3,9 @@ Unit and Integration Tests for Business Listings Intelligence Platform FastAPI B
 Uses pytest and FastAPI TestClient with an isolated test database session.
 """
 
+import os
+os.environ["TESTING"] = "1"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

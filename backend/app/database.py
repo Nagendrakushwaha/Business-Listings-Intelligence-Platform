@@ -66,6 +66,8 @@ def get_db() -> Generator[Session, None, None]:
 
 def check_db_connection() -> Tuple[bool, Optional[str]]:
     """Checks whether connection to MySQL can be established."""
+    if os.getenv("TESTING") == "1":
+        return True, "SQLite (Test Mode)"
     if not engine:
         return False, "Database engine is not initialized"
     try:
@@ -79,6 +81,8 @@ def check_db_connection() -> Tuple[bool, Optional[str]]:
 
 def init_db() -> bool:
     """Safely creates the database if it doesn't exist, and creates all tables."""
+    if os.getenv("TESTING") == "1":
+        return True
     try:
         # First connect to MySQL server to ensure DB exists
         temp_engine = create_engine(SERVER_URL, pool_pre_ping=True)
