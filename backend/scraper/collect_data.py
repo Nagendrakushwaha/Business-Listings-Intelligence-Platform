@@ -1,6 +1,6 @@
 """
 Data Collection Engine for Business Listings Intelligence Platform.
-Collects genuine business listings from OpenStreetMap (Overpass API, OSM Nominatim, and Photon OSM).
+Collects genuine business listings from OpenStreetMap (Overpass API with automatic OSM Nominatim and Photon fallbacks).
 
 Usage:
     python -m scraper.collect_data
@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import requests
 
-# Add parent directory to path to support both direct and module invocation
+# Add parent directory to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if current_dir not in sys.path:
@@ -78,15 +78,32 @@ class BusinessCollector:
         })
         self.raw_listings: List[Dict[str, Any]] = []
         self.seen_source_ids = set()
+        self.active_overpass_endpoint: Optional[str] = None
+        self._check_overpass()
+
+    def _check_overpass(self):
+        """Quickly tests if any Overpass API mirror is responsive (<= 3s)."""
+        logger.info("Probing Overpass API mirrors for availability...")
+        test_q = "[out:json][timeout:3];node(1);out;"
+        for ep in OVERPASS_ENDPOINTS[:3]:
+            try:
+                r = self.session.post(ep, data={"data": test_q}, timeout=3)
+                if r.status_code == 200:
+                    self.active_overpass_endpoint = ep
+                    logger.info(f"Overpass mirror online: {ep}")
+                    return
+            except Exception:
+                continue
+        logger.warning("All Overpass mirrors timed out or returned errors. Activating OpenStreetMap Nominatim & Photon fallback engines.")
 
     def fetch_with_retry(self, url: str, params: Optional[Dict] = None, data: Optional[Any] = None, method: str = "GET") -> Optional[requests.Response]:
         """Performs HTTP request with controlled exponential backoff retries."""
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 if method.upper() == "POST":
-                    resp = self.session.post(url, data=data, timeout=REQUEST_TIMEOUT)
+                    resp = self.session.post(url, data=data, timeout=8)
                 else:
-                    resp = self.session.get(url, params=params, timeout=REQUEST_TIMEOUT)
+                    resp = self.session.get(url, params=params, timeout=8)
 
                 if resp.status_code == 200:
                     return resp
@@ -95,89 +112,74 @@ class BusinessCollector:
                     logger.warning(f"Got HTTP {resp.status_code} from {url}. Retrying in {wait_time:.1f}s...")
                     time.sleep(wait_time)
                 else:
-                    logger.warning(f"HTTP {resp.status_code} from {url}")
+                    logger.debug(f"HTTP {resp.status_code} from {url}")
                     return None
             except (requests.RequestException, TimeoutError) as e:
                 wait_time = BACKOFF_FACTOR ** attempt
-                logger.warning(f"Request failed ({type(e).__name__}). Attempt {attempt}/{MAX_RETRIES}. Retrying in {wait_time:.1f}s...")
+                logger.debug(f"Request failed ({type(e).__name__}). Retrying in {wait_time:.1f}s...")
                 time.sleep(wait_time)
         return None
 
-    def query_overpass_category(self, city: str, city_meta: Dict, category: str, cat_meta: Dict, limit: int = 40) -> List[Dict[str, Any]]:
-        """Attempts to query Overpass API for a city and category combination."""
+    def query_overpass_category(self, city: str, city_meta: Dict, category: str, cat_meta: Dict, limit: int = 30) -> List[Dict[str, Any]]:
+        """Queries active Overpass API endpoint if available."""
+        if not self.active_overpass_endpoint:
+            return []
+
         lat, lon = city_meta["lat"], city_meta["lon"]
         radius = city_meta.get("radius", 15000)
         amenities = cat_meta.get("osm_amenity", [])
         
-        # Build Overpass query
-        union_clauses = []
-        for am in amenities:
-            union_clauses.append(f'node["amenity"="{am}"](around:{radius},{lat},{lon});')
-            union_clauses.append(f'way["amenity"="{am}"](around:{radius},{lat},{lon});')
+        union_clauses = [f'node["amenity"="{am}"](around:{radius},{lat},{lon});' for am in amenities]
+        query_str = f"""[out:json][timeout:6];\n(\n  {' '.join(union_clauses)}\n);\nout center body {limit};\n"""
 
-        query_str = f"""[out:json][timeout:{REQUEST_TIMEOUT}];
-(
-  {' '.join(union_clauses)}
-);
-out center body {limit};
-"""
-
-        for endpoint in OVERPASS_ENDPOINTS:
-            try:
-                logger.debug(f"Attempting Overpass query on {endpoint} for {category} in {city}...")
-                resp = self.session.post(endpoint, data={"data": query_str}, timeout=REQUEST_TIMEOUT)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    elements = data.get("elements", [])
-                    if elements:
-                        logger.info(f"Overpass ({endpoint}) returned {len(elements)} items for {category} in {city}")
-                        results = []
-                        for el in elements:
-                            tags = el.get("tags", {})
-                            name = tags.get("name")
-                            if not name:
-                                continue
-                            
-                            osm_type = el.get("type", "node")[0].upper()
-                            osm_id = el.get("id")
-                            source_id = f"OSM:{osm_type}{osm_id}"
-                            
-                            latitude = el.get("lat") or el.get("center", {}).get("lat")
-                            longitude = el.get("lon") or el.get("center", {}).get("lon")
-                            
-                            # Phone extraction
-                            phone = tags.get("phone") or tags.get("contact:phone") or tags.get("mobile")
-                            
-                            # Address extraction
-                            addr_parts = [
-                                tags.get("addr:housenumber"),
-                                tags.get("addr:street"),
-                                tags.get("addr:suburb") or tags.get("addr:neighbourhood"),
-                                tags.get("addr:city") or city,
-                                tags.get("addr:postcode")
-                            ]
-                            address = ", ".join([str(p) for p in addr_parts if p]) or f"{city}, {city_meta.get('state', '')}"
-                            
-                            results.append({
-                                "business_name": name,
-                                "category": category,
-                                "city": city,
-                                "address": address,
-                                "phone": phone,
-                                "source": "OpenStreetMap Overpass",
-                                "source_id": source_id,
-                                "latitude": latitude,
-                                "longitude": longitude,
-                                "collected_at": datetime.utcnow().isoformat() + "Z"
-                            })
-                        return results
-            except Exception as e:
-                logger.debug(f"Overpass mirror {endpoint} skipped: {e}")
-                continue
+        try:
+            resp = self.session.post(self.active_overpass_endpoint, data={"data": query_str}, timeout=6)
+            if resp.status_code == 200:
+                data = resp.json()
+                elements = data.get("elements", [])
+                results = []
+                for el in elements:
+                    tags = el.get("tags", {})
+                    name = tags.get("name")
+                    if not name:
+                        continue
+                    
+                    osm_type = el.get("type", "node")[0].upper()
+                    osm_id = el.get("id")
+                    source_id = f"OSM:{osm_type}{osm_id}"
+                    
+                    latitude = el.get("lat") or el.get("center", {}).get("lat")
+                    longitude = el.get("lon") or el.get("center", {}).get("lon")
+                    phone = tags.get("phone") or tags.get("contact:phone") or tags.get("mobile")
+                    
+                    addr_parts = [
+                        tags.get("addr:housenumber"),
+                        tags.get("addr:street"),
+                        tags.get("addr:suburb") or tags.get("addr:neighbourhood"),
+                        tags.get("addr:city") or city,
+                        tags.get("addr:postcode")
+                    ]
+                    address = ", ".join([str(p) for p in addr_parts if p]) or f"{city}, {city_meta.get('state', '')}"
+                    
+                    results.append({
+                        "business_name": name,
+                        "category": category,
+                        "city": city,
+                        "address": address,
+                        "phone": phone,
+                        "source": "OpenStreetMap",
+                        "source_id": source_id,
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "collected_at": datetime.utcnow().isoformat() + "Z"
+                    })
+                return results
+        except Exception:
+            pass
         return []
 
-    def query_nominatim_category(self, city: str, category: str, keyword: str, limit: int = 30) -> List[Dict[str, Any]]:
-        """Queries OpenStreetMap Nominatim Search API for genuine listings."""
+    def query_nominatim_category(self, city: str, category: str, keyword: str, limit: int = 25) -> List[Dict[str, Any]]:
+        """Queries OpenStreetMap Nominatim Search API for genuine listings with tags & phone."""
         query = f"{keyword} in {city}"
         params = {
             "q": query,
@@ -224,11 +226,11 @@ out center body {limit};
                     "collected_at": datetime.utcnow().isoformat() + "Z"
                 })
         except Exception as e:
-            logger.error(f"Error parsing Nominatim response for {query}: {e}")
+            logger.debug(f"Nominatim parsing error for {query}: {e}")
 
         return results
 
-    def query_photon_category(self, city: str, category: str, keyword: str, city_meta: Dict, limit: int = 40) -> List[Dict[str, Any]]:
+    def query_photon_category(self, city: str, category: str, keyword: str, city_meta: Dict, limit: int = 35) -> List[Dict[str, Any]]:
         """Queries OpenStreetMap Photon Geocoding engine for genuine listings."""
         lat, lon = city_meta["lat"], city_meta["lon"]
         query = f"{keyword} {city}"
@@ -239,7 +241,7 @@ out center body {limit};
             "limit": limit
         }
         resp = self.fetch_with_retry(PHOTON_SEARCH_URL, params=params)
-        time.sleep(RATE_LIMIT_DELAY / 2)
+        time.sleep(0.3)
 
         if not resp:
             return []
@@ -274,7 +276,7 @@ out center body {limit};
                     "category": category,
                     "city": city,
                     "address": address,
-                    "phone": None,  # Photon does not index raw phone tag
+                    "phone": None,
                     "source": "OpenStreetMap",
                     "source_id": source_id,
                     "latitude": latitude,
@@ -282,7 +284,7 @@ out center body {limit};
                     "collected_at": datetime.utcnow().isoformat() + "Z"
                 })
         except Exception as e:
-            logger.error(f"Error parsing Photon response: {e}")
+            logger.debug(f"Photon parsing error: {e}")
 
         return results
 
@@ -298,45 +300,45 @@ out center body {limit};
         logger.info(f"==========================================")
 
         city_listings: List[Dict[str, Any]] = []
-        per_category_target = max(target_count // len(CATEGORIES), 20)
+        per_category_target = max(target_count // len(CATEGORIES), 24)
 
         for cat_name, cat_meta in CATEGORIES.items():
             cat_listings = []
-            logger.info(f"-> Target Category: {cat_name} in {city} (aiming for {per_category_target})")
+            logger.info(f"-> Target Category: {cat_name} in {city} (target: {per_category_target})")
 
-            # 1. Attempt Overpass query first
-            overpass_results = self.query_overpass_category(city, city_meta, cat_name, cat_meta, limit=per_category_target)
-            for item in overpass_results:
-                sid = item.get("source_id")
-                if sid not in self.seen_source_ids:
-                    self.seen_source_ids.add(sid)
-                    cat_listings.append(item)
+            # 1. Attempt Overpass if online
+            if self.active_overpass_endpoint:
+                overpass_results = self.query_overpass_category(city, city_meta, cat_name, cat_meta, limit=per_category_target)
+                for item in overpass_results:
+                    sid = item.get("source_id")
+                    if sid not in self.seen_source_ids:
+                        self.seen_source_ids.add(sid)
+                        cat_listings.append(item)
 
-            # 2. If Overpass didn't yield enough, enrich with Nominatim (genuine OSM nodes with phone & address)
+            # 2. Enrich with Nominatim (primary for genuine phone tags + address)
+            for kw in cat_meta["keywords"]:
+                if len(cat_listings) >= per_category_target:
+                    break
+                nom_results = self.query_nominatim_category(city, cat_name, kw, limit=20)
+                for item in nom_results:
+                    sid = item.get("source_id")
+                    if sid not in self.seen_source_ids:
+                        self.seen_source_ids.add(sid)
+                        cat_listings.append(item)
+
+            # 3. Enrich with Photon OSM if needed
             if len(cat_listings) < per_category_target:
                 for kw in cat_meta["keywords"]:
                     if len(cat_listings) >= per_category_target:
                         break
-                    nom_results = self.query_nominatim_category(city, cat_name, kw, limit=15)
-                    for item in nom_results:
-                        sid = item.get("source_id")
-                        if sid not in self.seen_source_ids:
-                            self.seen_source_ids.add(sid)
-                            cat_listings.append(item)
-
-            # 3. If still needed, query Photon OSM engine
-            if len(cat_listings) < per_category_target:
-                for kw in cat_meta["keywords"]:
-                    if len(cat_listings) >= per_category_target:
-                        break
-                    pho_results = self.query_photon_category(city, cat_name, kw, city_meta, limit=20)
+                    pho_results = self.query_photon_category(city, cat_name, kw, city_meta, limit=25)
                     for item in pho_results:
                         sid = item.get("source_id")
                         if sid not in self.seen_source_ids:
                             self.seen_source_ids.add(sid)
                             cat_listings.append(item)
 
-            logger.info(f"   Collected {len(cat_listings)} genuine listings for {cat_name} in {city}")
+            logger.info(f"   Collected {len(cat_listings)} listings for {cat_name} in {city}")
             city_listings.extend(cat_listings)
 
         logger.info(f"Total collected for {city}: {len(city_listings)} listings\n")
