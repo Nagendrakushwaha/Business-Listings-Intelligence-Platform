@@ -101,3 +101,4 @@ export default function Sidebar({ activeTab, setActiveTab, dbStatus }) {
     </aside>
   );
 }
+

@@ -19,3 +19,4 @@ def setup_logger(name: str = "BusinessIntelligenceAPI") -> logging.Logger:
     return logger
 
 api_logger = setup_logger()
+

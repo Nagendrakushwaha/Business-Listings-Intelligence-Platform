@@ -101,3 +101,4 @@ class HealthResponse(BaseModel):
     database_connected: bool
     database_version: Optional[str] = None
     timestamp: datetime
+

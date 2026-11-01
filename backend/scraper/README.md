@@ -83,3 +83,4 @@ python -m scraper.export_csv --city Bhopal --output data/bhopal_listings.csv
 - Respects OpenStreetMap **ODbL (Open Database License)**.
 - Complies with OSM Nominatim usage policy (1 request/sec rate limiting, descriptive User-Agent).
 - **Zero Synthetic Fabrication**: Missing phone numbers are explicitly preserved as `NULL` instead of generating fake contact details.
+

@@ -76,3 +76,4 @@ export default function CityBarChart({ data = [], height = 280 }) {
     </div>
   );
 }
+

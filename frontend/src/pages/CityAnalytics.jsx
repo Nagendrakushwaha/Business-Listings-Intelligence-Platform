@@ -111,3 +111,4 @@ export default function CityAnalytics({ cityData = [], onSelectCity }) {
     </div>
   );
 }
+

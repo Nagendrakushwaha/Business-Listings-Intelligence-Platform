@@ -14,3 +14,4 @@ def sanitize_search_query(q: Optional[str]) -> Optional[str]:
     # Escape SQL LIKE wildcards if needed
     cleaned = cleaned.replace("%", "\\%").replace("_", "\\_")
     return cleaned if cleaned else None
+

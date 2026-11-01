@@ -46,3 +46,4 @@ def get_source_wise_analytics(db: Session = Depends(get_db)):
 def get_data_quality_report(db: Session = Depends(get_db)):
     """Returns comprehensive data quality metrics including duplicates removed, missing fields, and coverage."""
     return DashboardService.get_data_quality(db)
+

@@ -56,3 +56,4 @@
   > *During development, our biggest technical hurdle was handling intermittent rate limits and public Overpass server latency. We solved this by implementing an adaptive failover architecture with exponential backoff and secondary OSM geocoding APIs.*
   > *For future iterations, we could integrate geospatial radius search using MySQL spatial indexes (ST_Distance), implement scheduled cron jobs for automatic directory refreshes, and incorporate review sentiment analysis.*
   > *Thank you to the Honeybee Digital team for reviewing my submission. I look forward to discussing the architecture during the interview!"*
+

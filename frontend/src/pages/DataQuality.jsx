@@ -187,3 +187,4 @@ export default function DataQuality({ qualityData = {} }) {
 function round(val, dec = 1) {
   return Number(Math.round(val + 'e' + dec) + 'e-' + dec);
 }
+

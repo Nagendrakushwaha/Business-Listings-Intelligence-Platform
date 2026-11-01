@@ -50,3 +50,4 @@ export default function LoadingState({ type = 'card' }) {
   if (type === 'chart') return <LoadingChart />;
   return <LoadingCard />;
 }
+

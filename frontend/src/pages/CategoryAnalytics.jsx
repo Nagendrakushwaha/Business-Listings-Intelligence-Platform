@@ -99,3 +99,4 @@ export default function CategoryAnalytics({ categoryData = [], onSelectCategory 
     </div>
   );
 }
+

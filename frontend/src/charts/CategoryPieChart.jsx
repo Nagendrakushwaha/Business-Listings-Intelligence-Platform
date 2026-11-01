@@ -102,3 +102,4 @@ export default function CategoryPieChart({ data = [], height = 280 }) {
     </div>
   );
 }
+
