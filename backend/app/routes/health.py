@@ -2,7 +2,7 @@
 Health check and system status endpoint.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.dependencies import get_db
@@ -20,5 +20,5 @@ def get_health():
         status="healthy" if is_connected else "degraded",
         database_connected=is_connected,
         database_version=version if is_connected else None,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )

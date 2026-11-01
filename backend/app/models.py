@@ -6,6 +6,7 @@ Maps exactly to the required MySQL schema for `listing_master`.
 from datetime import datetime
 from sqlalchemy import (
     Column,
+    Integer,
     BigInteger,
     String,
     Text,
@@ -25,7 +26,7 @@ class ListingMaster(Base):
     """
     __tablename__ = "listing_master"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     business_name = Column(String(255), nullable=False)
     category = Column(String(100), nullable=True, index=True)
     city = Column(String(100), nullable=False, index=True)

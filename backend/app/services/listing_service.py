@@ -79,7 +79,7 @@ class ListingService:
 
         if new_records:
             try:
-                db.bulk_save_objects(new_records)
+                db.add_all(new_records)
                 db.commit()
                 inserted_count = len(new_records)
             except Exception as e:
