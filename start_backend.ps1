@@ -13,3 +13,4 @@ Write-Host "API Swagger UI: http://localhost:8000/docs" -ForegroundColor Green
 Write-Host "API Endpoint  : http://localhost:8000/api" -ForegroundColor Green
 
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
