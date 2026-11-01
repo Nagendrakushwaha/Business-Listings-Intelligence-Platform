@@ -1,0 +1,31 @@
+{
+  "total_raw_records": 882,
+  "total_cleaned_records": 857,
+  "duplicates_removed": 25,
+  "duplicate_source_ids": 0,
+  "duplicate_business_name_city": 25,
+  "empty_business_names_removed": 0,
+  "invalid_coordinates_detected": 0,
+  "missing_phone_numbers": 709,
+  "present_phone_numbers": 148,
+  "missing_addresses": 0,
+  "phone_coverage_percentage": 17.27,
+  "records_per_city": {
+    "Pune": 180,
+    "Jaipur": 178,
+    "Delhi": 171,
+    "Indore": 169,
+    "Bhopal": 159
+  },
+  "records_per_category": {
+    "Restaurant": 195,
+    "Hospital": 188,
+    "School": 177,
+    "Hotel": 157,
+    "IT Company": 140
+  },
+  "records_per_source": {
+    "OpenStreetMap": 857
+  },
+  "pipeline_status": "SUCCESS"
+}
