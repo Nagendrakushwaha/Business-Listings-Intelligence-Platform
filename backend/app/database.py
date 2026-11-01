@@ -40,6 +40,7 @@ SERVER_URL = f"mysql+pymysql://{auth_part}{DB_HOST}:{DB_PORT}/?charset=utf8mb4"
 try:
     engine = create_engine(
         DATABASE_URL,
+        connect_args={"connect_timeout": 3},
         pool_size=10,
         max_overflow=20,
         pool_pre_ping=True,

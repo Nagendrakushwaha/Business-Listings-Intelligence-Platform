@@ -3,6 +3,7 @@ Main FastAPI Application Entry Point.
 Configures CORS, routers, OpenAPI metadata, and lifecycle events.
 """
 
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,14 +16,15 @@ from app.utils.logger import api_logger
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle handler."""
-    api_logger.info("Initializing Business Listings Intelligence Platform API...")
-    # Safe DB initialization
-    try:
-        init_db()
-    except Exception as e:
-        api_logger.warning(f"Database auto-initialization skipped or deferred: {e}")
+    if os.getenv("TESTING") != "1":
+        api_logger.info("Initializing Business Listings Intelligence Platform API...")
+        try:
+            init_db()
+        except Exception as e:
+            api_logger.warning(f"Database auto-initialization skipped or deferred: {e}")
     yield
-    api_logger.info("Shutting down Business Listings Intelligence Platform API...")
+    if os.getenv("TESTING") != "1":
+        api_logger.info("Shutting down Business Listings Intelligence Platform API...")
 
 
 app = FastAPI(
